@@ -1,5 +1,6 @@
 from SPARQLWrapper import SPARQLWrapper, JSON
 import pandas as pd
+import sys
 
 sparql = SPARQLWrapper("https://labs.tib.eu/sdm/LungCancer/sparql")
 entity_type = 'http://example.org/lungCancer/entity/Patient'
@@ -46,7 +47,29 @@ def extract_ego_network(entity, sparql):
     return triples
 
 
-def composite_embedding(entity_type, sparql):
+def create_dataframe_from_nested_dict(aggregate_vector):
+    data = []
+    # Iterate through the nested dictionary
+    for model, entities in aggregate_vector.items():
+        for entity, values in entities.items():
+            # Add the values, entity name, and model name to the data list
+            data.append(values + [entity, model])
+
+    aggregate_vector = pd.DataFrame(data)
+    # Get the number of columns (excluding the Entity and Model columns)
+    num_cols = len(data[0]) - 2
+    # Generate column names dynamically
+    col_names = list(range(num_cols)) + ['Entity', 'Model']
+    # Rename the columns
+    aggregate_vector.columns = col_names
+    return aggregate_vector
+
+def aggregate_ego_network(entity, ego_network, model):
+    pass
+
+
+def composite_embedding(entity_type, endpoint, model_list):
+    sparql = SPARQLWrapper(endpoint)
     aggregate_vector = dict()
     # === Retrieve entities of type T ===
     results = retrieve_entity(entity_type, sparql)
@@ -62,17 +85,23 @@ def composite_embedding(entity_type, sparql):
 
         # == Data frame of ego network. Output: four columns, the last one is the ego entity.
         ego_network = pd.DataFrame.from_dict(ego_network)
-        ego_network['ego_entity'] = entity
+        # ego_network['ego_entity'] = entity
         ego_network = adding_prefix(ego_network)
 
         # === Function to aggregate vectors. Input:ego_network. Output: Dictionary with the following structure: aggregate = {'entity_1': [1,3,4]}
+        for model in model_list:
+            aggregate = aggregate_ego_network(entity, ego_network, model)
+            aggregate = {model: aggregate}
+            aggregate_vector.update(aggregate)
 
-        aggregate_vector.update(aggregate)
+    return create_dataframe_from_nested_dict(aggregate_vector)
 
-    aggregate_vector = pd.DataFrame.from_dict(aggregate_vector, orient='index')
 
-    # Reset the index to make the entity names a column
-    aggregate_vector = aggregate_vector.reset_index()
-    aggregate_vector.rename(columns={"index": "Entity"}, inplace=True)
-    return aggregate_vector
+def main(*args):
+    aggregate_vector = composite_embedding(args[0], args[1], list(args[2]))
+    aggregate_vector.to_csv('aggregate_vector.csv', index=None)
+
+
+if __name__ == '__main__':
+    main(*sys.argv[1:])
 
