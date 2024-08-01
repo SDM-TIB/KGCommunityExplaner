@@ -26,7 +26,7 @@ def retrieve_entity(entity_type, sparql):
     return results
 
 def extract_ego_network(entity, sparql):
-    #     === Query to retrive the ego network
+    #     === Query to retrieve the ego network
     q_ego_network = """
     SELECT DISTINCT ?subject ?predicate ?object
     WHERE {
