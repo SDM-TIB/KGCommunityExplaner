@@ -49,28 +49,24 @@ def extract_ego_network(entity, sparql):
 
 
 def create_dataframe_from_nested_dict(aggregate_vector):
-    data = []
-    # Iterate through the nested dictionary
-    for model, entities in aggregate_vector.items():
-        for entity, values in entities.items():
-            # Add the values, entity name, and model name to the data list
-            data.append(values + [entity, model])
+    rows = []
+    # Populate rows with the data
+    for model, entities_list in aggregate_vector.items():
+        for entities in entities_list:
+            for entity, values in entities.items():
+                row = values + [entity, model]  # Concatenate the list values with entity and model
+                rows.append(row)
 
-    aggregate_vector = pd.DataFrame(data)
-    # Get the number of columns (excluding the Entity and Model columns)
-    num_cols = len(data[0]) - 2
+    num_cols = len(rows[0]) - 2
     # Generate column names dynamically
     col_names = list(range(num_cols)) + ['Entity', 'Model']
-    # Rename the columns
-    aggregate_vector.columns = col_names
+    aggregate_vector = pd.DataFrame(rows, columns=col_names)
     return aggregate_vector
 
-# def aggregate_ego_network(entity, ego_network, model):
-#     pass
 
 def composite_embedding(entity_type, endpoint, model_list):
     sparql = SPARQLWrapper(endpoint)
-    aggregate_vector = dict()
+    aggregate_vector = {model: [] for model in model_list}  # Initialize a dictionary with empty lists for each model
     # === Retrieve entities of type T ===
     results = retrieve_entity(entity_type, sparql)
     for r in results['results']['bindings']:
@@ -88,16 +84,14 @@ def composite_embedding(entity_type, endpoint, model_list):
         # ego_network['ego_entity'] = entity
         ego_network = adding_prefix(ego_network)
         ego_network = ego_network.loc[ego_network['predicate']!='type']
-        # print(ego_network)
-
-        # === Function to aggregate vectors. Input:ego_network. Output: Dictionary with the following structure: aggregate = {'entity_1': [1,3,4]}
 
         for model in model_list:
             model_path = "../../KGEmbedding/OriginalKG/"+model+"/vectors/"
             aggregate = aggregate_ego_network(ego_network, model_path)
-            aggregate = {model: aggregate}
-            aggregate_vector.update(aggregate)
+            aggregate_vector[model].append(aggregate)  # Append the aggregate to the list for the current model
 
+            # aggregate = {model: aggregate}
+            # aggregate_vector.update(aggregate)
     return create_dataframe_from_nested_dict(aggregate_vector)
 
 
