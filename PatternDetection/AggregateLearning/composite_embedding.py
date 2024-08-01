@@ -50,7 +50,6 @@ def composite_embedding(entity_type, sparql):
     aggregate_vector = dict()
     # === Retrieve entities of type T ===
     results = retrieve_entity(entity_type, sparql)
-    df_ego_network = pd.DataFrame()
     for r in results['results']['bindings']:
         ego_network = []
         entity = r['ego_entity']['value']
