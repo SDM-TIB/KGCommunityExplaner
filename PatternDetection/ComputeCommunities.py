@@ -5,7 +5,7 @@ from os.path import isfile, join
 from shutil import copyfile
 import subprocess
 import Utility
-import matplotlib.pyplot as plt
+from AggregateLearning import composite_embedding as aggregate
 
 
 def call_semEP(threshold, cls_addres, file_addres):
@@ -157,13 +157,13 @@ def get_kg(path_kg):
 
 def get_target(kg, target, df_donor):
     target_kg = kg.loc[kg.p == target]
-    target_kg = target_kg.rename(columns={"s": "ClinicalRecord", "o": "Relapse"})
-    target_kg = target_kg[['ClinicalRecord', 'Relapse']]
-    target_kg.drop_duplicates(subset='ClinicalRecord', inplace=True)
-    target_unknown = df_donor.merge(target_kg, how='outer', on='ClinicalRecord', indicator=True).loc[
+    target_kg = target_kg.rename(columns={"s": "Entity", "o": "Relapse"})
+    target_kg = target_kg[['Entity', 'Relapse']]
+    target_kg.drop_duplicates(subset='Entity', inplace=True)
+    target_unknown = df_donor.merge(target_kg, how='outer', on='Entity', indicator=True).loc[
         lambda x: x['_merge'] == 'left_only']
     target_unknown.Relapse = 'UnKnown'
-    target_unknown = target_unknown[['ClinicalRecord', 'Relapse']]
+    target_unknown = target_unknown[['Entity', 'Relapse']]
     target_kg = pd.concat([target_kg, target_unknown])
     return target_kg
 
@@ -174,8 +174,9 @@ def extract_real_part(complex_str):
     return complex_num.real
 
 
-def run(kg_name, target_predicate, model_list, threshold):
+def run(entity_type, endpoint, kg_name, target_predicate, model_list, threshold):
     kg = get_kg('../KG/'+kg_name+'/LungCancer.tsv')
+    aggregate_vector = aggregate.composite_embedding(entity_type, endpoint, model_list)
     # Make semEP-node executable
     subprocess.run(['chmod', '+x', 'semEP-node'], check=True)
 
@@ -183,9 +184,9 @@ def run(kg_name, target_predicate, model_list, threshold):
     # print(subprocess.run(['ls', '-l', 'semEP-node'], check=True, capture_output=True, text=True).stdout)
 
     for m in model_list:
-        path_model = '../KGEmbedding/'+kg_name+'/'
         """Load KGE model"""
-        df_donor = pd.read_csv(path_model + m + '/embedding_donors.csv')
+        df_donor = aggregate_vector.loc[aggregate_vector.Model==m]
+        df_donor.drop(columns=['Model'], inplace=True)
         complex_numb = False
         if m == 'RotatE':
             complex_numb = True
@@ -193,8 +194,8 @@ def run(kg_name, target_predicate, model_list, threshold):
             real_df = pd.DataFrame()
             # Iterate over columns of the original DataFrame
             for col in df_donor.columns:
-                # Skip 'ClinicalRecord' column
-                if col == 'ClinicalRecord':
+                # Skip 'Entity' column
+                if col == 'Entity':
                     real_df[col] = df_donor[col]
                     continue
                 # Extract real parts and store in the new DataFrame
@@ -203,7 +204,7 @@ def run(kg_name, target_predicate, model_list, threshold):
         """Load ClinicalRecord responses file"""
         target = get_target(kg, target_predicate, df_donor)
         """Labeling donors in the DataFrame"""
-        df_donor = pd.merge(df_donor, target, on="ClinicalRecord")
+        df_donor = pd.merge(df_donor, target, on="Entity")
         file_address = 'clusteringMeasures/' + m + '/'
         path_plot = '../Plots/'+kg_name+'/' + m + '/'
         for th in threshold:
@@ -225,7 +226,7 @@ def run(kg_name, target_predicate, model_list, threshold):
             #     nodes = METIS_Undirected_MAX_based_similarity_graph(sim_matrix, cls_address_metis)
             #     call_metis(num_cls, nodes, cls_address_metis)
             """Labeling donors in the matrix"""
-            sim_matrix = sim_matrix.merge(target, left_index=True, right_on='ClinicalRecord', suffixes=('_df1', '_df2'))
+            sim_matrix = sim_matrix.merge(target, left_index=True, right_on='Entity', suffixes=('_df1', '_df2'))
     
             cls_statistics = pd.DataFrame(columns=['cluster-' + str(x) for x in range(num_cls)],
                                           index=['No_Progression', 'Progression', 'Relapse',
@@ -233,21 +234,21 @@ def run(kg_name, target_predicate, model_list, threshold):
             entries = os.listdir(cls_address + 'clusters/')
             for file in entries:
                 sim_matrix.loc[
-                    sim_matrix.ClinicalRecord.isin(Utility.load_cluster(file, cls_address + 'clusters/')), 'cluster'] = int(
+                    sim_matrix.Entity.isin(Utility.load_cluster(file, cls_address + 'clusters/')), 'cluster'] = int(
                     file[:-4].split('-')[1])
                 df_donor.loc[
-                    df_donor.ClinicalRecord.isin(Utility.load_cluster(file, cls_address + 'clusters/')), 'cluster'] = int(
+                    df_donor.Entity.isin(Utility.load_cluster(file, cls_address + 'clusters/')), 'cluster'] = int(
                     file[:-4].split('-')[1])
             """Compute statistics for each cluster"""
-            cluster_statistics(sim_matrix.drop(['ClinicalRecord'], axis=1), cls_statistics, num_cls, cls_address)
+            cluster_statistics(sim_matrix.drop(['Entity'], axis=1), cls_statistics, num_cls, cls_address)
     
             if not os.path.exists(path_plot):
                 os.makedirs(path_plot)
             if len(entries) < 9:
-                new_df = Utility.plot_semEP(len(entries), sim_matrix.drop(['ClinicalRecord'], axis=1), path_plot, 'PCA_th_' + str(th) + 'matrix.pdf',
+                new_df = Utility.plot_semEP(len(entries), sim_matrix.drop(['Entity'], axis=1), path_plot, 'PCA_th_' + str(th) + 'matrix.pdf',
                                             scale=False, show=False)
                 new_df[['Relapse', 'cluster']].to_csv(path_plot + 'th_' + str(th) + '_summary.csv')
-                Utility.plot_semEP(len(entries), df_donor.drop(columns=['ClinicalRecord']), path_plot, 'PCA_th_' + str(th) + '.pdf',
+                Utility.plot_semEP(len(entries), df_donor.drop(columns=['Entity']), path_plot, 'PCA_th_' + str(th) + '.pdf',
                                    scale=False, show=False)
             df_donor.drop(columns=['cluster'], inplace=True)
     
@@ -265,7 +266,7 @@ def run(kg_name, target_predicate, model_list, threshold):
             update_cluster_folder(kmeans_address)
             """Save Kmeans-Clusters"""
             for cls in range(num_cls):
-                new_df.loc[new_df.cluster == cls][['ClinicalRecord']].to_csv(
+                new_df.loc[new_df.cluster == cls][['Entity']].to_csv(
                     kmeans_address + 'clusters/' + 'cluster-' + str(cls) + '.txt', index=None, header=None)
             """Compute statistics for each cluster"""
             cls_statistics = pd.DataFrame(columns=['cluster-' + str(x) for x in range(num_cls)],
@@ -278,28 +279,3 @@ def run(kg_name, target_predicate, model_list, threshold):
         Utility.plot_treatment(df_donor, path_plot)
         """Density of Donor Similarity"""
         Utility.density_plot(list_sim, path_plot)
-
-def PCA_projection(kg_name, model, target_predicate, cls_algorithm, th):
-    path_plot = '../Plots/' + kg_name + '/' + model + '/'
-    kg = SemCD.get_kg('../KG/' + kg_name + '/LungCancer.tsv')
-    """Load KGE model"""
-    path_model = '../KGEmbedding/' + kg_name + '/'
-    df_donor = pd.read_csv(path_model + model + '/embedding_donors.csv')
-    if model == 'RotatE':
-        # Create a new DataFrame to store real parts
-        real_df = pd.DataFrame()
-        # Iterate over columns of the original DataFrame
-        for col in df_donor.columns:
-            # Skip 'ClinicalRecord' column
-            if col == 'ClinicalRecord':
-                real_df[col] = df_donor[col]
-                continue
-            # Extract real parts and store in the new DataFrame
-            real_df[col] = df_donor[col].apply(extract_real_part)
-        df_donor = real_df.copy()
-    """Load ClinicalRecord responses file"""
-    target = get_target(kg, target_predicate, df_donor)
-    """Labeling donors in the DataFrame"""
-    df_donor = pd.merge(df_donor, target, on="ClinicalRecord")
-    """Visualize Donors"""
-    Utility.plot_treatment(df_donor, path_plot, True)

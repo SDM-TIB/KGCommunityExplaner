@@ -38,9 +38,9 @@ def density_plot(list_sim, path_plot):
 
 def load_cluster(name, address):
     cls = pd.read_csv(address + name, delimiter="\t", header=None)
-    cls.columns = ['ClinicalRecord']
-    # print('cls.ClinicalRecord:', list(cls.ClinicalRecord))
-    return list(cls.ClinicalRecord)
+    cls.columns = ['Entity']
+    # print('cls.Entity:', list(cls.Entity))
+    return list(cls.Entity)
 
 
 def cosine_sim(x, y):
@@ -71,7 +71,7 @@ def normalize_matrix(sim_matrix):
 
 
 def matrix_similarity(embedding, th, complex_numb):
-    df = embedding.set_index('ClinicalRecord')
+    df = embedding.set_index('Entity')
     # Extract the vectors from the DataFrame
     vectors = df.values
     # Compute the cosine similarity matrix
