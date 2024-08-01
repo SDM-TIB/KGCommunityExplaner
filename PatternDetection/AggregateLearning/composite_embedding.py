@@ -1,6 +1,7 @@
 from SPARQLWrapper import SPARQLWrapper, JSON
 import pandas as pd
 import sys
+from vec_agg import aggregate_ego_network
 
 sparql = SPARQLWrapper("https://labs.tib.eu/sdm/LungCancer/sparql")
 entity_type = 'http://example.org/lungCancer/entity/Patient'
@@ -64,9 +65,8 @@ def create_dataframe_from_nested_dict(aggregate_vector):
     aggregate_vector.columns = col_names
     return aggregate_vector
 
-def aggregate_ego_network(entity, ego_network, model):
-    pass
-
+# def aggregate_ego_network(entity, ego_network, model):
+#     pass
 
 def composite_embedding(entity_type, endpoint, model_list):
     sparql = SPARQLWrapper(endpoint)
@@ -87,10 +87,14 @@ def composite_embedding(entity_type, endpoint, model_list):
         ego_network = pd.DataFrame.from_dict(ego_network)
         # ego_network['ego_entity'] = entity
         ego_network = adding_prefix(ego_network)
+        ego_network = ego_network.loc[ego_network['predicate']!='type']
+        # print(ego_network)
 
         # === Function to aggregate vectors. Input:ego_network. Output: Dictionary with the following structure: aggregate = {'entity_1': [1,3,4]}
+
         for model in model_list:
-            aggregate = aggregate_ego_network(entity, ego_network, model)
+            model_path = "../../KGEmbedding/OriginalKG/"+model+"/vectors/"
+            aggregate = aggregate_ego_network(ego_network, model_path)
             aggregate = {model: aggregate}
             aggregate_vector.update(aggregate)
 
@@ -98,7 +102,7 @@ def composite_embedding(entity_type, endpoint, model_list):
 
 
 def main(*args):
-    aggregate_vector = composite_embedding(args[0], args[1], list(args[2]))
+    aggregate_vector = composite_embedding(args[0], args[1], ['TransH'])
     aggregate_vector.to_csv('aggregate_vector.csv', index=None)
 
 
