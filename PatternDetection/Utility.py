@@ -387,7 +387,7 @@ def plot_treatment(df, name, show=False):
     # title and labels
     plt.title('ClinicalRecords in P4-LUCAT', loc='left', fontsize=22)
     # plt.savefig(fname='Plots/PCA_KG_' + str(n) + ".png", format='png', bbox_inches='tight', dpi=300, transparent=True)
-    plt.savefig(fname=name + 'PCA.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(fname=name, format='pdf', bbox_inches='tight')
     if show:
         plt.show()
     plt.close()

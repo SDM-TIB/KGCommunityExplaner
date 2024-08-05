@@ -66,10 +66,10 @@ def catplot(df_reset, model):
     plt.savefig(model+'.pdf', bbox_inches='tight', format='pdf', transparent=True)
 
 
-def PCA_projection(kg_name, model, threshold):
+def PCA_projection(kg_name, model, threshold, name):
     # Path to the PDF file
-    pdf_path1 = '../Plots/' + kg_name + '/' + model + '/PCA.pdf'
-    pdf_path2 = '../Plots/' + kg_name + '/' + model + '/PCA_th_' + str(threshold) + '.pdf'
+    pdf_path1 = '../Plots/' + kg_name + '/' + model + '/PCA'+name+'.pdf'
+    pdf_path2 = '../Plots/' + kg_name + '/' + model + '/PCA_th_' + str(threshold) + name+'.pdf'
 
     # Open the PDF files
     fig1 = fitz.open(pdf_path1)

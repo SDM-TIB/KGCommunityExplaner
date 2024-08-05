@@ -208,8 +208,8 @@ def run(entity_type, endpoint, kg_name, target_predicate, model_list, threshold)
         file_address = 'clusteringMeasures/' + m + '/'
         path_plot = '../Plots/'+kg_name+'/' + m + '/'
         for th in threshold:
-            cls_address = file_address + 'SemEP_' + str(th) + '/'
-            # cls_address_metis = file_address + 'METIS_' + str(th) + '/'
+            cls_address = file_address + 'AggregatedSemEP_' + str(th) + '/'
+            # cls_address_metis = file_address + 'AggregatedMETIS_' + str(th) + '/'
     
             update_cluster_folder(cls_address)
             """Create similarity matrix of Donors"""
@@ -245,17 +245,19 @@ def run(entity_type, endpoint, kg_name, target_predicate, model_list, threshold)
             if not os.path.exists(path_plot):
                 os.makedirs(path_plot)
             if len(entries) < 9:
-                new_df = Utility.plot_semEP(len(entries), sim_matrix.drop(['Entity'], axis=1), path_plot, 'PCA_th_' + str(th) + 'matrix.pdf',
+                new_df = Utility.plot_semEP(len(entries), sim_matrix.drop(['Entity'], axis=1), path_plot,
+                                            'PCA_th_' + str(th) + '_AggregatedMatrix.pdf',
                                             scale=False, show=False)
-                new_df[['Relapse', 'cluster']].to_csv(path_plot + 'th_' + str(th) + '_summary.csv')
-                Utility.plot_semEP(len(entries), df_donor.drop(columns=['Entity']), path_plot, 'PCA_th_' + str(th) + '.pdf',
+                new_df[['Relapse', 'cluster']].to_csv(path_plot + 'th_' + str(th) + '_summary_Aggregated.csv')
+                Utility.plot_semEP(len(entries), df_donor.drop(columns=['Entity']), path_plot,
+                                   'PCA_th_' + str(th) + '_Aggregated.pdf',
                                    scale=False, show=False)
             df_donor.drop(columns=['cluster'], inplace=True)
     
             """Execute Kmeans"""
             # sim_matrix['ClinicalRecord'] = sim_matrix.index
             sim_matrix.drop(columns=['cluster'], inplace=True)
-            kmeans_address = file_address + 'Kmeans_' + str(th) + '/'
+            kmeans_address = file_address + 'AggregatedKmeans_' + str(th) + '/'
             if not os.path.exists(kmeans_address):
                 os.makedirs(kmeans_address)
             # num_cls = Utility.elbow_KMeans(sim_matrix.iloc[:, :-2], 1, 15, kmeans_address)  # df_donor
@@ -276,7 +278,117 @@ def run(entity_type, endpoint, kg_name, target_predicate, model_list, threshold)
             print('Community Detection by SemEP and Kmeans, considering ' +m+ ' model and threshold '+ str(th)+ ' done.')
 
         """Visualize Donors"""
-        Utility.plot_treatment(df_donor, path_plot)
+        Utility.plot_treatment(df_donor, path_plot + 'PCA_Aggregated.pdf')
+        """Density of Donor Similarity"""
+        Utility.density_plot(list_sim, path_plot + 'Aggregated_')
+        return aggregate_vector
+
+
+def baseline(kg_name, target_predicate, model_list, threshold):
+    kg = get_kg('../KG/' + kg_name + '/LungCancer.tsv')
+    # Make semEP-node executable
+    subprocess.run(['chmod', '+x', 'semEP-node'], check=True)
+
+    for m in model_list:
+        path_model = '../KGEmbedding/' + kg_name + '/'
+        """Load KGE model"""
+        df_donor = pd.read_csv(path_model + m + '/embedding_donors.csv')
+        complex_numb = False
+        if m == 'RotatE':
+            complex_numb = True
+            # Create a new DataFrame to store real parts
+            real_df = pd.DataFrame()
+            # Iterate over columns of the original DataFrame
+            for col in df_donor.columns:
+                # Skip 'Entity' column
+                if col == 'Entity':
+                    real_df[col] = df_donor[col]
+                    continue
+                # Extract real parts and store in the new DataFrame
+                real_df[col] = df_donor[col].apply(extract_real_part)
+            df_donor = real_df.copy()
+        """Load ClinicalRecord responses file"""
+        target = get_target(kg, target_predicate, df_donor)
+        """Labeling donors in the DataFrame"""
+        df_donor = pd.merge(df_donor, target, on="Entity")
+        file_address = 'clusteringMeasures/' + m + '/'
+        path_plot = '../Plots/' + kg_name + '/' + m + '/'
+        for th in threshold:
+            cls_address = file_address + 'SemEP_' + str(th) + '/'
+            # cls_address_metis = file_address + 'METIS_' + str(th) + '/'
+            update_cluster_folder(cls_address)
+            """Create similarity matrix of Donors"""
+            sim_matrix, percentile, list_sim = Utility.matrix_similarity(df_donor.drop(columns=['Relapse']),
+                                                                         th,
+                                                                         complex_numb)  # cosine_sim, euclidean_distance
+            Utility.SemEP_structure(file_address + 'matrix_ClinicalRecord.tsv', sim_matrix, sep=' ')
+            sim_matrix.to_csv(file_address + 'matrix_sim.txt', index=False, float_format='%.5f', mode='w+',
+                              header=False)
+            Utility.create_entitie(sim_matrix.columns.to_list(), file_address + 'ClinicalRecord.txt')
+            """Execute SemEP"""
+            num_cls = call_semEP(percentile, cls_address, file_address)
+            """METIS"""
+            # update_cluster_folder(cls_address_metis)
+            # if num_cls > 1:
+            #     nodes = METIS_Undirected_MAX_based_similarity_graph(sim_matrix, cls_address_metis)
+            #     call_metis(num_cls, nodes, cls_address_metis)
+            """Labeling donors in the matrix"""
+            sim_matrix = sim_matrix.merge(target, left_index=True, right_on='Entity', suffixes=('_df1', '_df2'))
+
+            cls_statistics = pd.DataFrame(columns=['cluster-' + str(x) for x in range(num_cls)],
+                                          index=['No_Progression', 'Progression', 'Relapse',
+                                                 'UnKnown'])
+            entries = os.listdir(cls_address + 'clusters/')
+            for file in entries:
+                sim_matrix.loc[
+                    sim_matrix.Entity.isin(
+                        Utility.load_cluster(file, cls_address + 'clusters/')), 'cluster'] = int(
+                    file[:-4].split('-')[1])
+                df_donor.loc[
+                    df_donor.Entity.isin(
+                        Utility.load_cluster(file, cls_address + 'clusters/')), 'cluster'] = int(
+                    file[:-4].split('-')[1])
+            """Compute statistics for each cluster"""
+            cluster_statistics(sim_matrix.drop(['Entity'], axis=1), cls_statistics, num_cls, cls_address)
+
+            if not os.path.exists(path_plot):
+                os.makedirs(path_plot)
+            if len(entries) < 9:
+                new_df = Utility.plot_semEP(len(entries), sim_matrix.drop(['Entity'], axis=1), path_plot,
+                                            'PCA_th_' + str(th) + 'matrix.pdf',
+                                            scale=False, show=False)
+                new_df[['Relapse', 'cluster']].to_csv(path_plot + 'th_' + str(th) + '_summary.csv')
+                Utility.plot_semEP(len(entries), df_donor.drop(columns=['Entity']), path_plot,
+                                   'PCA_th_' + str(th) + '.pdf',
+                                   scale=False, show=False)
+            df_donor.drop(columns=['cluster'], inplace=True)
+
+            """Execute Kmeans"""
+            # sim_matrix['ClinicalRecord'] = sim_matrix.index
+            sim_matrix.drop(columns=['cluster'], inplace=True)
+            kmeans_address = file_address + 'Kmeans_' + str(th) + '/'
+            if not os.path.exists(kmeans_address):
+                os.makedirs(kmeans_address)
+            # num_cls = Utility.elbow_KMeans(sim_matrix.iloc[:, :-2], 1, 15, kmeans_address)  # df_donor
+            # if num_cls is None:
+            #     num_cls = 15
+            new_df, cls_report = Utility.plot_cluster(num_cls, sim_matrix, kmeans_address, scale=False,
+                                                      show=False)  # df_donor
+            new_df.to_csv(kmeans_address + 'cluster.csv', index=None)
+            update_cluster_folder(kmeans_address)
+            """Save Kmeans-Clusters"""
+            for cls in range(num_cls):
+                new_df.loc[new_df.cluster == cls][['Entity']].to_csv(
+                    kmeans_address + 'clusters/' + 'cluster-' + str(cls) + '.txt', index=None, header=None)
+            """Compute statistics for each cluster"""
+            cls_statistics = pd.DataFrame(columns=['cluster-' + str(x) for x in range(num_cls)],
+                                          index=['No_Progression', 'Progression', 'Relapse',
+                                                 'UnKnown'])
+            cluster_statistics(new_df, cls_statistics, num_cls, kmeans_address)
+            print('Community Detection by SemEP and Kmeans, considering ' + m + ' model and threshold ' + str(
+                th) + ' done.')
+
+        """Visualize Donors"""
+        Utility.plot_treatment(df_donor, path_plot + 'PCA.pdf')
         """Density of Donor Similarity"""
         Utility.density_plot(list_sim, path_plot)
-        return aggregate_vector

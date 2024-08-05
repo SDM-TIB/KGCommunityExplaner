@@ -113,7 +113,7 @@ def extract_number_of_clusters(file_path):
     return None
 
 
-def GenerateRadarPlot(model_list, threshold):
+def GenerateRadarPlot(model_list, algorithm, threshold):
     cls_measure = 'clusteringMeasures/'
     for model in model_list:
         matrix_address = cls_measure + model + '/'
@@ -121,9 +121,9 @@ def GenerateRadarPlot(model_list, threshold):
             metric_semep = [0, 0, 0, 0, 0]
             # metric_met = [0, 0, 0, 0, 0]
             metric_km = [0, 0, 0, 0, 0]
-            f_semep = 'SemEP_' + str(th)
+            f_semep = algorithm[0]+'_' + str(th)
             # f_metis = 'METIS_' + str(th)
-            f_kmeans = 'Kmeans_' + str(th)
+            f_kmeans = algorithm[1]+'_' + str(th)
             cls_address = matrix_address + f_semep + '/'
             # cls_address_metis = matrix_address + f_metis + '/'
             cls_address_km = matrix_address + f_kmeans + '/'
@@ -149,7 +149,8 @@ def GenerateRadarPlot(model_list, threshold):
             with open('evaluation_metric/' + f_kmeans + model + '.txt', "w") as f:
                 f.write(str(metric_km) + "\n")
             print(model+' -Threshold: '+str(th))
-            radar_plot(metric_semep, metric_km, key=str(th) + model)
+            name = algorithm[0].replace('SemEP', '')
+            radar_plot(metric_semep, metric_km, key=name+str(th) + model)
             # plt.cla()
 
 
